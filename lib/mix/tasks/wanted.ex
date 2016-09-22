@@ -1,2 +1,0 @@
-defmodule Wanted do
-end

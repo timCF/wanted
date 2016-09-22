@@ -1,0 +1,2 @@
+defmodule Wanted do
+end

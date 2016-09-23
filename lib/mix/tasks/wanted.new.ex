@@ -9,15 +9,13 @@ defmodule Mix.Tasks.Wanted.New do
   @moduledoc """
   Creates a new Elixir project.
   It expects the path of the project as argument.
-      mix new PATH [--sup] [--module MODULE] [--app APP] [--umbrella]
+      mix new PATH [--sup] [--module MODULE] [--app APP]
   A project at the given PATH  will be created. The
   application name and module name will be retrieved
   from the path, unless `--module` or `--app` is given.
   A `--sup` option can be given to generate an OTP application
   skeleton including a supervision tree. Normally an app is
   generated without a supervisor and without the app callback.
-  An `--umbrella` option can be given to generate an
-  umbrella project.
   An `--app` option can be given in order to
   name the OTP application for the project.
   A `--module` option can be given in order
@@ -30,7 +28,7 @@ defmodule Mix.Tasks.Wanted.New do
       mix new hello_world --sup
   """
 
-  @switches [sup: :boolean, umbrella: :boolean, app: :string, module: :string]
+  @switches [sup: :boolean, app: :string, module: :string]
 
   @spec run(OptionParser.argv) :: :ok
   def run(argv) do
@@ -46,14 +44,7 @@ defmodule Mix.Tasks.Wanted.New do
         check_mod_name_validity!(mod)
         check_mod_name_availability!(mod)
         File.mkdir_p!(path)
-
-        File.cd! path, fn ->
-          if opts[:umbrella] do
-            do_generate_umbrella(app, mod, path, opts)
-          else
-            do_generate(app, mod, path, opts)
-          end
-        end
+        File.cd!(path, fn -> do_generate(app, mod, path, opts) end)
     end
   end
 
@@ -63,12 +54,7 @@ defmodule Mix.Tasks.Wanted.New do
 
     create_file "README.md",  readme_template(assigns)
     create_file ".gitignore", gitignore_text
-
-    if in_umbrella? do
-      create_file "mix.exs", mixfile_apps_template(assigns)
-    else
-      create_file "mix.exs", mixfile_template(assigns)
-    end
+    create_file "mix.exs", mixfile_template(assigns)
 
     create_directory "config"
     create_file "config/config.exs", config_template(assigns)
@@ -103,31 +89,6 @@ defmodule Mix.Tasks.Wanted.New do
 		"""
 	end
 
-  defp do_generate_umbrella(_app, mod, path, _opts) do
-    assigns = [app: nil, mod: mod]
-
-    create_file ".gitignore", gitignore_text
-    create_file "README.md", readme_template(assigns)
-    create_file "mix.exs", mixfile_umbrella_template(assigns)
-
-    create_directory "apps"
-
-    create_directory "config"
-    create_file "config/config.exs", config_umbrella_template(assigns)
-
-    Mix.shell.info """
-    Your umbrella project was created successfully.
-    Inside your project, you will find an apps/ directory
-    where you can create and host many apps:
-        cd #{path}
-        cd apps
-        mix new my_app
-    Commands like "mix compile" and "mix test" when executed
-    in the umbrella project root will automatically run
-    for each application in the apps/ directory.
-    """
-  end
-
   defp check_application_name!(name, from_app_flag) do
     unless name =~ ~r/^[a-z][\w_]*$/ do
       Mix.raise "Application name must start with a letter and have only lowercase " <>
@@ -161,19 +122,6 @@ defmodule Mix.Tasks.Wanted.New do
         [h | _] -> "-#{h}"
         []      -> ""
       end
-  end
-
-  defp in_umbrella? do
-    apps = Path.dirname(File.cwd!)
-
-    try do
-      Mix.Project.in_project(:umbrella_check, "../..", fn _ ->
-        path = Mix.Project.config[:apps_path]
-        path && Path.expand(path) == apps
-      end)
-    catch
-      _, _ -> false
-    end
   end
 
   embed_template :readme, """
@@ -244,73 +192,6 @@ defmodule Mix.Tasks.Wanted.New do
   end
   """
 
-  embed_template :mixfile_apps, """
-  defmodule <%= @mod %>.Mixfile do
-    use Mix.Project
-    def project do
-      [app: :<%= @app %>,
-       version: "0.1.0",
-       build_path: "../../_build",
-       config_path: "../../config/config.exs",
-       deps_path: "../../deps",
-       lockfile: "../../mix.lock",
-       elixir: "~> <%= @version %>",
-       build_embedded: Mix.env == :prod,
-       start_permanent: Mix.env == :prod,
-       deps: deps]
-    end
-    # Configuration for the OTP application
-    #
-    # Type "mix help compile.app" for more information
-    def application do
-  <%= @otp_app %>
-    end
-    # Dependencies can be Hex packages:
-    #
-    #   {:mydep, "~> 0.3.0"}
-    #
-    # Or git/path repositories:
-    #
-    #   {:mydep, git: "https://github.com/elixir-lang/mydep.git", tag: "0.1.0"}
-    #
-    # To depend on another app inside the umbrella:
-    #
-    #   {:myapp, in_umbrella: true}
-    #
-    # Type "mix help deps" for more examples and options
-    defp deps do
-      []
-    end
-  end
-  """
-
-  embed_template :mixfile_umbrella, """
-  defmodule <%= @mod %>.Mixfile do
-    use Mix.Project
-    def project do
-      [apps_path: "apps",
-       build_embedded: Mix.env == :prod,
-       start_permanent: Mix.env == :prod,
-       deps: deps]
-    end
-    # Dependencies can be Hex packages:
-    #
-    #   {:mydep, "~> 0.3.0"}
-    #
-    # Or git/path repositories:
-    #
-    #   {:mydep, git: "https://github.com/elixir-lang/mydep.git", tag: "0.1.0"}
-    #
-    # Type "mix help deps" for more examples and options.
-    #
-    # Dependencies listed here are available only for this project
-    # and cannot be accessed from applications inside the apps folder
-    defp deps do
-      []
-    end
-  end
-  """
-
   embed_template :config, ~S"""
   # This file is responsible for configuring your application
   # and its dependencies with the aid of the Mix.Config module.
@@ -339,24 +220,6 @@ defmodule Mix.Tasks.Wanted.New do
   # here (which is why it is important to import them last).
   #
   #     import_config "#{Mix.env}.exs"
-  """
-
-  embed_template :config_umbrella, ~S"""
-  # This file is responsible for configuring your application
-  # and its dependencies with the aid of the Mix.Config module.
-  use Mix.Config
-  # By default, the umbrella project as well as each child
-  # application will require this configuration file, ensuring
-  # they all use the same configuration. While one could
-  # configure all applications here, we prefer to delegate
-  # back to each application for organization purposes.
-  import_config "../apps/*/config/config.exs"
-  # Sample configuration (overrides the imported configuration above):
-  #
-  #     config :logger, :console,
-  #       level: :info,
-  #       format: "$date $time [$level] $metadata$message\n",
-  #       metadata: [:user_id]
   """
 
   embed_template :lib, """

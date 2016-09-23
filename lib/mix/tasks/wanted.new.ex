@@ -4,18 +4,15 @@ defmodule Mix.Tasks.Wanted.New do
   import Mix.Generator
   import Mix.Utils, only: [camelize: 1]
 
-  @shortdoc "Creates a new Elixir project"
+  @shortdoc "Creates a new Wanted project"
 
   @moduledoc """
-  Creates a new Elixir project.
+  Creates a new Wanted project.
   It expects the path of the project as argument.
-      mix new PATH [--sup] [--module MODULE] [--app APP]
+      mix new PATH [--module MODULE] [--app APP]
   A project at the given PATH  will be created. The
   application name and module name will be retrieved
   from the path, unless `--module` or `--app` is given.
-  A `--sup` option can be given to generate an OTP application
-  skeleton including a supervision tree. Normally an app is
-  generated without a supervisor and without the app callback.
   An `--app` option can be given in order to
   name the OTP application for the project.
   A `--module` option can be given in order
@@ -24,11 +21,9 @@ defmodule Mix.Tasks.Wanted.New do
       mix new hello_world
   Is equivalent to:
       mix new hello_world --module HelloWorld
-  To generate an app with supervisor and application callback:
-      mix new hello_world --sup
   """
 
-  @switches [sup: :boolean, app: :string, module: :string]
+  @switches [app: :string, module: :string]
 
   @spec run(OptionParser.argv) :: :ok
   def run(argv) do
@@ -60,12 +55,7 @@ defmodule Mix.Tasks.Wanted.New do
     create_file "config/config.exs", config_template(assigns)
 
     create_directory "lib"
-
-    if opts[:sup] do
-      create_file "lib/#{app}.ex", lib_sup_template(assigns)
-    else
-      create_file "lib/#{app}.ex", lib_template(assigns)
-    end
+    create_file "lib/#{app}.ex", lib_sup_template(assigns)
 
     create_directory "test"
     create_file "test/test_helper.exs", test_helper_template(assigns)
@@ -220,11 +210,6 @@ defmodule Mix.Tasks.Wanted.New do
   # here (which is why it is important to import them last).
   #
   #     import_config "#{Mix.env}.exs"
-  """
-
-  embed_template :lib, """
-  defmodule <%= @mod %> do
-  end
   """
 
   embed_template :lib_sup, """

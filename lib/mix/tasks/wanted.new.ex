@@ -73,7 +73,15 @@ defmodule Mix.Tasks.Wanted.New do
 	defp otp_app(mod) do
 		"""
 		[applications: [
-										:logger
+										:logger,
+										:silverb,
+										:pmaker,
+										:maybe,
+										:cachex,
+										:sqlx,
+										:jazz,
+										:exprotobuf,
+										:uelli,
 									],
 		mod: {#{mod}, []}]
 		"""
@@ -176,9 +184,18 @@ defmodule Mix.Tasks.Wanted.New do
     #   {:mydep, git: "https://github.com/elixir-lang/mydep.git", tag: "0.1.0"}
     #
     # Type "mix help deps" for more examples and options
-    defp deps do
-      []
-    end
+		defp deps do
+			[
+				{:silverb, github: "timCF/silverb"},
+				{:pmaker, github: "timCF/pmaker"},
+				{:maybe, github: "timCF/maybe"},
+				{:cachex, github: "timCF/cachex"},
+				{:sqlx, github: "timCF/sqlx"},
+				{:jazz, github: "meh/jazz"},
+				{:exprotobuf, github: "bitwalker/exprotobuf"},
+				{:uelli, github: "timCF/uelli"},
+			]
+		end
   end
   """
 
@@ -236,7 +253,17 @@ defmodule Mix.Tasks.Wanted.New do
   defmodule <%= @mod %>Test do
     use ExUnit.Case
     doctest <%= @mod %>
-    test "the truth" do
+
+		defp test_protoc do
+			this_dir = "\#{:code.priv_dir(:<%= @app %>)}/<%= @app %>_proto"
+			test_protoc_rm(this_dir)
+			[] = :os.cmd('protoc \#{this_dir}/<%= @app %>.proto --proto_path=\#{this_dir} --cpp_out=\#{this_dir}')
+			test_protoc_rm(this_dir)
+		end
+		defp test_protoc_rm(this_dir), do: Enum.each(["<%= @app %>.pb.h","<%= @app %>.pb.cc"],&(File.rm(this_dir<>"/"<>&1)))
+
+    test "test protoc is valid" do
+      test_protoc
       assert 1 + 1 == 2
     end
   end

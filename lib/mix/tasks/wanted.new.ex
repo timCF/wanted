@@ -58,7 +58,7 @@ defmodule Mix.Tasks.Wanted.New do
   end
 
   defp do_generate(app, mod, path, opts) do
-    assigns = [app: app, mod: mod, otp_app: otp_app(mod, !!opts[:sup]),
+    assigns = [app: app, mod: mod, otp_app: otp_app(mod),
                version: get_version(System.version)]
 
     create_file "README.md",  readme_template(assigns)
@@ -94,13 +94,14 @@ defmodule Mix.Tasks.Wanted.New do
     """
   end
 
-  defp otp_app(_mod, false) do
-    "    [applications: [:logger]]"
-  end
-
-  defp otp_app(mod, true) do
-    "    [applications: [:logger],\n     mod: {#{mod}, []}]"
-  end
+	defp otp_app(mod) do
+		"""
+		[applications: [
+										:logger
+									],
+		mod: {#{mod}, []}]
+		"""
+	end
 
   defp do_generate_umbrella(_app, mod, path, _opts) do
     assigns = [app: nil, mod: mod]
@@ -217,7 +218,7 @@ defmodule Mix.Tasks.Wanted.New do
     def project do
       [app: :<%= @app %>,
        version: "0.1.0",
-       elixir: "~> <%= @version %>",
+       # elixir: "~> <%= @version %>",
        build_embedded: Mix.env == :prod,
        start_permanent: Mix.env == :prod,
        deps: deps()]

@@ -9,21 +9,13 @@ defmodule Mix.Tasks.Wanted.New do
   @moduledoc """
   Creates a new Wanted project.
   It expects the path of the project as argument.
-      mix new PATH [--module MODULE] [--app APP]
+      mix new PATH [--git-app=app] [--git-proto=gitproto] [--git-ui=gitui]
   A project at the given PATH  will be created. The
   application name and module name will be retrieved
-  from the path, unless `--module` or `--app` is given.
-  An `--app` option can be given in order to
-  name the OTP application for the project.
-  A `--module` option can be given in order
-  to name the modules in the generated code skeleton.
-  ## Examples
-      mix new hello_world
-  Is equivalent to:
-      mix new hello_world --module HelloWorld
+  from the path (same as --git-app dir).
   """
 
-  @switches [app: :string, module: :string, git_ui: :string, git_proto: :string]
+  @switches [git_ui: :string, git_proto: :string, git_app: :string]
 
   @spec run(OptionParser.argv) :: :ok
   def run(argv) do
@@ -33,15 +25,16 @@ defmodule Mix.Tasks.Wanted.New do
       [] ->
         Mix.raise "Expected PATH to be given, please use \"mix new PATH\""
       [path | _] ->
-        app = opts[:app] || Path.basename(Path.expand(path))
-        check_application_name!(app, !!opts[:app])
-        mod = opts[:module] || camelize(app)
+        app = Path.basename(Path.expand(path))
+        check_application_name!(app)
+        mod = camelize(app)
         check_mod_name_validity!(mod)
         check_mod_name_availability!(mod)
 				git_ui = opts[:git_ui] || "git@github.com:timCF/#{app}_ui.git"
 				git_proto = opts[:git_proto] || "git@github.com:timCF/#{app}_proto.git"
-				:ok = [git_ui, git_proto] |> Enum.each(&check_subproject_git/1)
-        File.mkdir_p!(path)
+				git_app = opts[:git_app] || "git@github.com:timCF/#{app}.git"
+				:ok = [git_ui, git_proto, git_app] |> Enum.each(&check_subproject_git!/1)
+        {_, 0} = System.cmd("git", ["clone", git_app])
         File.cd!(path, fn -> do_generate(app, mod, path, opts, git_ui, git_proto) end)
     end
   end
@@ -60,6 +53,8 @@ defmodule Mix.Tasks.Wanted.New do
 
     create_file "README.md",  readme_template(assigns)
     create_file ".gitignore", gitignore_template(assigns)
+		create_file ".gitmodules", gitmodules_template(assigns)
+		create_file "Makefile", makefile_template(assigns)
     create_file "mix.exs", mixfile_template(assigns)
 
     create_directory "config"
@@ -107,24 +102,18 @@ defmodule Mix.Tasks.Wanted.New do
 		dirname
 	end
 
-	defp check_subproject_git(git) when is_binary(git) do
+	defp check_subproject_git!(git) when is_binary(git) do
 		case System.cmd("git", ["ls-remote", git]) do
 			{_, 0} -> :ok
 			some -> Mix.raise("Unacceptable wanted subproject git ls-remote #{git} : #{inspect some}")
 		end
 	end
-	defp check_subproject_git(some), do: Mix.raise("Unacceptable wanted subproject git repo #{inspect some}")
+	defp check_subproject_git!(some), do: Mix.raise("Unacceptable wanted subproject git repo #{inspect some}")
 
-  defp check_application_name!(name, from_app_flag) do
+  defp check_application_name!(name) do
     unless name =~ ~r/^[a-z][\w_]*$/ do
       Mix.raise "Application name must start with a letter and have only lowercase " <>
-                "letters, numbers and underscore, got: #{inspect name}" <>
-                (if !from_app_flag do
-                  ". The application name is inferred from the path, if you'd like to " <>
-                  "explicitly name the application then use the \"--app APP\" option."
-                else
-                  ""
-                end)
+                "letters, numbers and underscore, got: #{inspect name}"
     end
   end
 
@@ -188,6 +177,27 @@ defmodule Mix.Tasks.Wanted.New do
 	/priv/<%= @dir_proto %>
   """
 
+	embed_template :gitmodules, """
+	[submodule "priv/<%= @dir_ui %>"]
+		path = priv/<%= @dir_ui %>
+		url = <%= @git_ui %>
+	[submodule "priv/<%= @dir_proto %>"]
+		path = priv/<%= @dir_proto %>
+		url = <%= @git_proto %>
+	"""
+
+	embed_template :makefile, """
+	all:
+		mix deps.get && mix compile
+	rebuild:
+		mix clean
+		git submodule update --init --recursive
+		mix deps.get && mix compile
+		cd ./priv/<%= @dir_ui %> && make rebuild
+		mix release.clean --implode
+		mix release
+	"""
+
   embed_template :mixfile, """
   defmodule <%= @mod %>.Mixfile do
     use Mix.Project
@@ -222,7 +232,7 @@ defmodule Mix.Tasks.Wanted.New do
 				{:cachex, github: "timCF/cachex"},
 				{:sqlx, github: "timCF/sqlx"},
 				{:jazz, github: "meh/jazz"},
-				{:exprotobuf, github: "bitwalker/exprotobuf"},
+				{:exprotobuf, github: "bitwalker/exprotobuf", tag: "1.2.1"},
 				{:uelli, github: "timCF/uelli"},
 			]
 		end
@@ -257,6 +267,14 @@ defmodule Mix.Tasks.Wanted.New do
   # here (which is why it is important to import them last).
   #
   #     import_config "#{Mix.env}.exs"
+	#
+	config :logger, :console,
+		level: :debug,
+		format: "$date $time [$level] $metadata$message\n",
+		metadata: [:user_id]
+	#
+	#	TODO : ADD APPS CONFIGS
+	#
   """
 
   embed_template :lib_sup, """

@@ -23,7 +23,7 @@ defmodule Mix.Tasks.Wanted.New do
       mix new hello_world --module HelloWorld
   """
 
-  @switches [app: :string, module: :string]
+  @switches [app: :string, module: :string, git_ui: :string, git_proto: :string]
 
   @spec run(OptionParser.argv) :: :ok
   def run(argv) do
@@ -38,17 +38,28 @@ defmodule Mix.Tasks.Wanted.New do
         mod = opts[:module] || camelize(app)
         check_mod_name_validity!(mod)
         check_mod_name_availability!(mod)
+				git_ui = opts[:git_ui] || "git@github.com:timCF/#{app}_ui.git"
+				git_proto = opts[:git_proto] || "git@github.com:timCF/#{app}_proto.git"
+				:ok = [git_ui, git_proto] |> Enum.each(&check_subproject_git/1)
         File.mkdir_p!(path)
-        File.cd!(path, fn -> do_generate(app, mod, path, opts) end)
+        File.cd!(path, fn -> do_generate(app, mod, path, opts, git_ui, git_proto) end)
     end
   end
 
-  defp do_generate(app, mod, path, opts) do
-    assigns = [app: app, mod: mod, otp_app: otp_app(mod),
-               version: get_version(System.version)]
+  defp do_generate(app, mod, path, _opts, git_ui, git_proto) do
+    assigns = [
+								app: app,
+								mod: mod,
+								otp_app: otp_app(mod),
+								version: get_version(System.version),
+								git_ui: git_ui,
+								git_proto: git_proto,
+								dir_ui: dir_from_git(git_ui),
+								dir_proto: dir_from_git(git_proto),
+							]
 
     create_file "README.md",  readme_template(assigns)
-    create_file ".gitignore", gitignore_text
+    create_file ".gitignore", gitignore_template(assigns)
     create_file "mix.exs", mixfile_template(assigns)
 
     create_directory "config"
@@ -60,6 +71,10 @@ defmodule Mix.Tasks.Wanted.New do
     create_directory "test"
     create_file "test/test_helper.exs", test_helper_template(assigns)
     create_file "test/#{app}_test.exs", test_template(assigns)
+
+
+		create_directory "priv"
+		:ok = [git_ui, git_proto] |> Enum.each(&({_, 0} = System.cmd("git", ["clone", &1], [cd: Path.expand("priv")])))
 
     Mix.shell.info """
     Your Mix project was created successfully.
@@ -86,6 +101,19 @@ defmodule Mix.Tasks.Wanted.New do
 		mod: {#{mod}, []}]
 		"""
 	end
+
+	defp dir_from_git(bin) when is_binary(bin) do
+		[_, dirname] = Regex.run(~r/.+\/(.+)\.git$/, bin)
+		dirname
+	end
+
+	defp check_subproject_git(git) when is_binary(git) do
+		case System.cmd("git", ["ls-remote", git]) do
+			{_, 0} -> :ok
+			some -> Mix.raise("Unacceptable wanted subproject git ls-remote #{git} : #{inspect some}")
+		end
+	end
+	defp check_subproject_git(some), do: Mix.raise("Unacceptable wanted subproject git repo #{inspect some}")
 
   defp check_application_name!(name, from_app_flag) do
     unless name =~ ~r/^[a-z][\w_]*$/ do
@@ -143,7 +171,7 @@ defmodule Mix.Tasks.Wanted.New do
   <% end %>
   """
 
-  embed_text :gitignore, """
+  embed_template :gitignore, """
   # The directory Mix will write compiled artifacts to.
   /_build
   # If you run "mix test --cover", coverage assets end up here.
@@ -156,6 +184,8 @@ defmodule Mix.Tasks.Wanted.New do
   erl_crash.dump
   # Also ignore archive artifacts (built via "mix archive.build").
   *.ez
+	/priv/<%= @dir_ui %>
+	/priv/<%= @dir_proto %>
   """
 
   embed_template :mixfile, """
